@@ -1,7 +1,8 @@
-package log
+package main
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"sync"
 	"time"
@@ -95,4 +96,13 @@ func zerologTraceHook(ctx context.Context) zerolog.HookFunc {
 			}
 		}
 	}
+}
+
+// helper method
+func LogHTTPHeader(log zerolog.Logger, msg string, h http.Header) {
+	l := log.Info()
+	for k, vs := range h {
+		l = l.Strs(k, vs)
+	}
+	l.Msg(msg)
 }

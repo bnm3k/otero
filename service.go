@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/komuw/otero/log"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -34,8 +33,8 @@ func serviceA(ctx context.Context, port int) {
 		Handler: handler,
 	}
 
-	log := log.NewLogrus(ctx)
-	log.Info("serviceA listening on: ", address)
+	log := NewZerolog(ctx)
+	log.Info().Str("address", address).Msg("serviceA listening")
 	err := server.ListenAndServe()
 	if err != nil {
 		panic(err)
@@ -61,8 +60,8 @@ func serviceB(ctx context.Context, port int) {
 		Handler: handler,
 	}
 
-	log := log.NewLogrus(ctx)
-	log.Info("serviceB listening on: ", address)
+	log := NewZerolog(ctx)
+	log.Info().Str("address", address).Msg("serviceB listening")
 	err := server.ListenAndServe()
 	if err != nil {
 		panic(err)
@@ -91,8 +90,8 @@ func serviceA_HttpHandler(w http.ResponseWriter, r *http.Request) {
 		}...,
 	)
 
-	log := log.NewLogrus(ctx)
-	log.Info("serviceA_HttpHandler called")
+	log := NewZerolog(ctx)
+	log.Info().Msg("serviceA_HttpHandler called")
 
 	// When serviceA is called, it calls serviceB over tcp network.
 	// We should still be able to propagate traces over a tcp network.
@@ -104,7 +103,7 @@ func serviceA_HttpHandler(w http.ResponseWriter, r *http.Request) {
 			// otelhttp.WithPropagators(propagator),
 		),
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://otero_service_b:8082/serviceB", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost:8082/serviceB", nil)
 	if err != nil {
 		panic(err)
 	}
@@ -112,13 +111,13 @@ func serviceA_HttpHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		panic(err)
 	}
-	log.Info("serviceA called serviceB and got resp.StatusCode: ", resp.StatusCode)
+	log.Info().Int("status_code", resp.StatusCode).Msg("serviceA called serviceB")
 
 	fmt.Fprintf(w, "hello from serviceA")
 	// response header contains, `Ot-Tracer-Spanid` & `Ot-Tracer-Traceid` headers that are added by the otel propagator.
 	// upstream services can then consume those.
-	log.Info("request.Header serviceA: ", r.Header)
-	log.Info("response.Header serviceA: ", w.Header())
+	LogHTTPHeader(log, "request.Header serviceA", r.Header)
+	LogHTTPHeader(log, "response.Header serviceA", w.Header())
 }
 
 func serviceB_HttpHandler(w http.ResponseWriter, r *http.Request) {
@@ -131,16 +130,16 @@ func serviceB_HttpHandler(w http.ResponseWriter, r *http.Request) {
 	)
 	counter.Add(ctx, 1)
 
-	log := log.NewLogrus(ctx)
-	log.Info("serviceB_HttpHandler called")
+	log := NewZerolog(ctx)
+	log.Info().Msg("serviceB_HttpHandler called")
 
 	answer := add(ctx, 42, 1813)
 
 	fmt.Fprintf(w, "hello from serviceB: Answer is: %d", answer)
 	// response header contains, `Ot-Tracer-Spanid` & `Ot-Tracer-Traceid` headers that are added by the otel propagator.
 	// upstream services can then consume those.
-	log.Info("request.Header serviceB: ", r.Header)
-	log.Info("response.Header serviceB: ", w.Header())
+	LogHTTPHeader(log, "request.Header serviceB", r.Header)
+	LogHTTPHeader(log, "response.Header serviceB", w.Header())
 }
 
 func add(ctx context.Context, x, y int64) int64 {
@@ -157,19 +156,8 @@ func add(ctx context.Context, x, y int64) int64 {
 	err := errors.New("oops, 99 problems")
 	span.RecordError(err, trace.WithStackTrace(true))
 
-	{ // Use different loggers.
-
-		lr := log.NewLogrus(ctx)
-		lr.Println("logrus: add called.")
-
-		lz := log.NewZerolog(ctx)
-		lz.Info().Msg("zerolog: add called.")
-
-		ls := log.NewSlog(ctx)
-		ls.Info("slog: add called. Wall with NO explicit context")
-		ls.Debug("slog: some msg", "age", 56)
-		ls.InfoCtx(ctx, "slog: call with explicit context")
-	}
+	lz := NewZerolog(ctx)
+	lz.Info().Msg("zerolog: add called.")
 
 	return x + y
 }

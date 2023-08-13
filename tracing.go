@@ -2,9 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
-	"os"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -13,7 +10,6 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
-	"google.golang.org/grpc/credentials"
 )
 
 func setupTracing(ctx context.Context, serviceName string) (*trace.TracerProvider, error) {
@@ -33,20 +29,10 @@ func setupTracing(ctx context.Context, serviceName string) (*trace.TracerProvide
 		exporter, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
 	*/
 
-	c, err := getTls()
-	if err != nil {
-		return nil, err
-	}
-
 	exporter, err := otlptracegrpc.New(
 		ctx,
-		otlptracegrpc.WithEndpoint("otel_collector:4317"),
-		otlptracegrpc.WithTLSCredentials(
-			// mutual tls.
-			credentials.NewTLS(c),
-		),
-		// You can use `WithInsecure` for non-production purposes.
-		// otlptracegrpc.WithInsecure(),
+		otlptracegrpc.WithEndpoint("localhost:4317"),
+		otlptracegrpc.WithInsecure(),
 	)
 	if err != nil {
 		return nil, err
@@ -122,25 +108,3 @@ func (c loggingSpanProcessor) OnEnd(s trace.ReadOnlySpan) {
 func (c loggingSpanProcessor) OnStart(parent context.Context, s trace.ReadWriteSpan) {}
 func (c loggingSpanProcessor) ForceFlush(ctx context.Context) error                  { return nil }
 func (c loggingSpanProcessor) Shutdown(ctx context.Context) error                    { return nil }
-
-// getTls returns a configuration that enables the use of mutual TLS.
-func getTls() (*tls.Config, error) {
-	clientAuth, err := tls.LoadX509KeyPair("./confs/tls/client.crt", "./confs/tls/client.key")
-	if err != nil {
-		return nil, err
-	}
-
-	caCert, err := os.ReadFile("./confs/tls/rootCA.crt")
-	if err != nil {
-		return nil, err
-	}
-	caCertPool := x509.NewCertPool()
-	caCertPool.AppendCertsFromPEM(caCert)
-
-	c := &tls.Config{
-		RootCAs:      caCertPool,
-		Certificates: []tls.Certificate{clientAuth},
-	}
-
-	return c, nil
-}
